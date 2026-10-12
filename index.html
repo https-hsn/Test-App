@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Site Manager</title>
+<meta name="theme-color" content="#14213d">
+<style>
+:root{--bg:#f3f5f9;--card:#fff;--tx:#18202b;--mu:#667085;--ln:#e3e7ee;--ac:#0b6bcb;--sb:#14213d;--ok:#1a7f4b;--bad:#c62828;--wa:#b26a00;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1318;--card:#1a1f27;--tx:#e8eaed;--mu:#9aa3af;--ln:#2b323c;--ac:#4aa3ff;--sb:#0a0e14;--ok:#4cc38a;--bad:#ff7b72;--wa:#e3a33b}}
+:root[data-theme="dark"]{--bg:#0f1318;--card:#1a1f27;--tx:#e8eaed;--mu:#9aa3af;--ln:#2b323c;--ac:#4aa3ff;--sb:#0a0e14;--ok:#4cc38a;--bad:#ff7b72;--wa:#e3a33b}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+button,input,select,textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:8px 10px;max-width:100%}
+button{cursor:pointer}button.p{background:var(--ac);border-color:var(--ac);color:#fff}button.d{color:var(--bad)}button.t{border:none;background:none;color:var(--mu);padding:4px 8px}
+textarea{width:100%;min-height:64px}
+#shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+aside{background:var(--sb);color:#cfd8e8;padding:16px 10px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px}
+aside h2{color:#fff;font-size:17px;margin:0 8px 14px}aside button{background:none;border:none;color:#cfd8e8;text-align:left;padding:10px 12px;border-radius:8px;width:100%}
+aside button.on{background:rgba(255,255,255,.14);color:#fff}aside .me{margin-top:auto;padding:8px;font-size:13px;border-top:1px solid rgba(255,255,255,.15)}
+main{padding:20px;max-width:1000px;width:100%}h3{margin:0 0 12px;font-size:20px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px;border-left:4px solid var(--ac)}.stat b{font-size:26px;display:block}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}.row>*{flex:1;min-width:110px}
+.mu{color:var(--mu);font-size:13px}.badge{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--ln)}
+.open,.High{color:var(--bad)}.solved,.done{color:var(--ok)}.wip,.Medium{color:var(--wa)}.click{cursor:pointer}
+.it{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--ln);padding:9px 0}.it:first-child{border-top:none}
+.tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}.tabs button.on{background:var(--ac);border-color:var(--ac);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px;border-top:1px solid var(--ln);text-align:left}.wrap{overflow-x:auto}
+.ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.ph img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--ln);cursor:pointer}
+#msgs{height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px}
+.m{max-width:80%;padding:8px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--ln)}.m.me{align-self:flex-end;background:var(--ac);color:#fff;border-color:var(--ac)}.m small{opacity:.75;display:block}
+#lb{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:20}#lb img{max-width:95%;max-height:95%}
+#login{max-width:340px;margin:12vh auto;padding:0 16px}
+@media(max-width:800px){#shell{grid-template-columns:1fr}aside{position:static;height:auto;flex-direction:row;overflow-x:auto;padding:8px}aside h2,aside .me{display:none}aside button{width:auto;white-space:nowrap}main{padding:12px}}
+</style></head><body>
+<div id="root"></div><div id="lb" onclick="this.style.display='none'"><img id="lbi"></div>
+<script>
+const ROLES=['Admin','CEO','General Manager','Project Manager','Supervisor','Engineer','Technician'];
+const D={users:[],sites:[],reports:[],problems:[],visits:[],chat:[]};
+let ME=null,VER=0,view='dash',sid=null,tab='reports',P=[],pend=false,timer=null;
+const $=id=>document.getElementById(id);
+const E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const today=()=>new Date().toISOString().slice(0,10),site=id=>D.sites.find(s=>s.id===id),sn=id=>site(id)?.name||'(deleted site)';
+const mgr=()=>['Admin','CEO','General Manager','Project Manager'].includes(ME.role),sch=()=>mgr()||ME.role==='Supervisor';
+async function api(m,u,b){const r=await fetch(u,{method:m,headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined,credentials:'same-origin'});let j={};try{j=await r.json()}catch(e){}
+ if(!r.ok){if(r.status===401&&ME){ME=null;clearInterval(timer);render()}throw new Error(j.error||'Error '+r.status)}return j}
+const W=p=>p.catch(e=>alert('Could not save: '+e.message));
+const put=(c,o)=>W(api('POST','/api/'+c,o).then(()=>refresh())),upd=(c,id,o)=>W(api('PATCH',`/api/${c}/${id}`,o).then(()=>refresh())),del=(c,id)=>W(api('DELETE',`/api/${c}/${id}`).then(()=>refresh()));
+async function login(){const u=$('lu').value.trim().toLowerCase(),p=$('lp').value;if(!u||!p)return;try{ME=await api('POST','/api/login',{username:u,password:p});await start()}catch(e){$('le').textContent=e.message}}
+async function logout(){try{await api('POST','/api/logout')}catch(e){}ME=null;clearInterval(timer);render()}
+async function start(){await refresh(true);render();clearInterval(timer);timer=setInterval(async()=>{try{if(!ME)return;const r=await api('GET','/api/poll');if(r.v!==VER)await refresh()}catch(e){}},3000)}
+async function refresh(first){const r=await api('GET','/api/data');VER=r.v;const ch=[];for(const c in D)if(JSON.stringify(D[c])!==JSON.stringify(r[c])){D[c]=r[c];ch.push(c)}
+ const m=D.users.find(x=>x.id===ME.id);if(!m)return logout();ME={...ME,...m};if(!first&&ch.length)soft(ch)}
+function soft(ch){if(!ME)return;if(ch.length===1&&ch[0]==='chat'&&view==='site'&&tab==='chat')return msgs();const a=document.activeElement;
+ if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)&&a.closest('main')&&a.value){pend=true;return}render()}
+document.addEventListener('focusout',()=>{if(pend){pend=false;setTimeout(()=>{const a=document.activeElement;if(!(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)&&a.value))render()},200)}});
+function go(v,id){view=v;sid=id||null;tab='reports';P=[];render();scrollTo(0,0)}
+function render(){
+ if(!ME){$('root').innerHTML=`<div id="login"><div class="card"><h3>🛠 Site Manager</h3><p class="mu">Sign in with the account created by your administrator.</p><div class="row"><input id="lu" placeholder="Username" autocapitalize="none"></div><div class="row"><input id="lp" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')login()"></div><button class="p" onclick="login()" style="width:100%">Sign in</button><p id="le" class="mu" style="color:var(--bad)"></p></div></div>`;return}
+ const nav=[['dash','📊 Dashboard'],['sites','🏗 Sites'],['visits','📅 Visits'],['problems','⚠️ Problems'],['stock','📦 Stock']];if(ME.role==='Admin')nav.push(['users','👥 Users']);
+ const V={dash:vDash,sites:vSites,site:vSite,visits:vVisits,problems:vProb,stock:vStock,users:vUsers}[view]||vDash;
+ $('root').innerHTML=`<div id="shell"><aside><h2>🛠 Site Manager</h2>${nav.map(([k,l])=>`<button class="${view===k||(view==='site'&&k==='sites')?'on':''}" onclick="go('${k}')">${l}</button>`).join('')}<div class="me"><b>${E(ME.name)}</b><br>${E(ME.role)}<br><button onclick="myPw()" style="margin-top:6px;padding:6px 10px;border:1px solid rgba(255,255,255,.3)">Change password</button><button onclick="logout()" style="margin-top:6px;padding:6px 10px;border:1px solid rgba(255,255,255,.3)">Log out</button></div></aside><main>${ME.must?'<div class="card" style="border-color:var(--bad)">⚠️ You are using a temporary password. <button class="p" onclick="myPw()">Change it now</button></div>':''}${V()}</main></div>`;
+ if(view==='site'&&tab==='chat')msgs();
+}
+const byDate=(a,b)=>(a.date||'').localeCompare(b.date||'');
+function vDash(){
+ const t=today(),op=D.problems.filter(p=>p.status==='open'),up=D.visits.filter(v=>!v.done&&v.date>=t).sort(byDate),od=D.visits.filter(v=>!v.done&&v.date<t).length;
+ return `<h3>Welcome, ${E(ME.name)}</h3><div class="grid"><div class="stat"><b>${D.sites.filter(s=>s.status!=='Completed').length}</b>Active sites</div><div class="stat" style="border-color:var(--bad)"><b>${op.length}</b>Open problems</div><div class="stat" style="border-color:var(--wa)"><b>${up.filter(v=>v.date===t).length}</b>Visits today</div><div class="stat" style="border-color:var(--bad)"><b>${od}</b>Overdue visits</div><div class="stat" style="border-color:var(--ok)"><b>${D.reports.length}</b>Reports</div></div>
+ <div class="card"><b>Upcoming visits</b>${up.slice(0,6).map(v=>`<div class="it click" onclick="go('site','${v.siteId}')"><span><b>${E(sn(v.siteId))}</b> <span class="mu">${E(v.note||'')}</span></span><span class="mu">${v.date} ${E(v.time||'')}</span></div>`).join('')||'<p class="mu">None scheduled.</p>'}</div>
+ <div class="card"><b>Open problems</b>${op.sort((a,b)=>b.ts-a.ts).slice(0,6).map(p=>`<div class="it click" onclick="go('site','${p.siteId}')"><span><b>${E(sn(p.siteId))}</b> — ${E(p.text)}</span><span class="badge ${p.sev}">${p.sev}</span></div>`).join('')||'<p class="mu">No open problems 🎉</p>'}</div>
+ <div class="card"><b>Recent reports</b>${[...D.reports].sort((a,b)=>b.ts-a.ts).slice(0,6).map(r=>`<div class="it click" onclick="go('site','${r.siteId}')"><span><b>${E(sn(r.siteId))}</b> — ${E(r.work)}</span><span class="mu">${r.date} · ${E(r.by)}</span></div>`).join('')||'<p class="mu">No reports yet.</p>'}</div>`;
+}
+function vSites(){
+ return `<h3>Sites</h3>${sch()?`<div class="card"><div class="row"><input id="n" placeholder="Site name *"><input id="c" placeholder="Client"><input id="a" placeholder="Address"></div><button class="p" onclick="addSite()">Add site</button></div>`:''}`+
+ (D.sites.map(s=>{const nv=D.visits.filter(v=>v.siteId===s.id&&!v.done&&v.date>=today()).sort(byDate)[0];return `<div class="card click" onclick="go('site','${s.id}')"><b>${E(s.name)}</b> <span class="badge ${s.status==='Completed'?'done':'wip'}">${E(s.status)}</span><div class="mu">${E(s.client)} ${s.address?'· '+E(s.address):''}</div><div class="mu">${D.problems.filter(p=>p.siteId===s.id&&p.status==='open').length} open problems · next visit: ${nv?nv.date:'—'}</div></div>`}).join('')||'<p class="mu">No sites yet.</p>');
+}
+function addSite(){const n=$('n').value.trim();if(!n)return;put('sites',{name:n,client:$('c').value,address:$('a').value,status:'In progress',ts:Date.now()})}
+function vSite(){
+ const s=site(sid);if(!s)return vSites();
+ let h=`<button class="t" onclick="go('sites')">← All sites</button><div class="card"><div class="row"><b style="flex:2;font-size:18px">${E(s.name)}</b>${sch()?`<select onchange="upd('sites','${s.id}',{status:this.value})">${['Planned','In progress','On hold','Completed'].map(x=>`<option ${x===s.status?'selected':''}>${x}</option>`).join('')}</select>`:`<span class="badge">${E(s.status)}</span>`}</div><div class="mu">${E(s.client)} ${s.address?'· '+E(s.address):''}</div>${mgr()?`<button class="t d" onclick="delSite('${s.id}')">Delete site</button>`:''}</div>
+ <div class="tabs">${[['reports','📝 Reports'],['problems','⚠️ Problems'],['chat','💬 Chat']].map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';P=[];render()">${l}</button>`).join('')}</div>`;
+ if(tab==='reports'){
+  const names=[...new Set(D.reports.flatMap(r=>(r.items||[]).map(i=>i.name)))];
+  return h+`<datalist id="dl">${names.map(n=>`<option value="${E(n)}">`).join('')}</datalist><div class="card"><b>New report</b><div class="row" style="margin-top:8px"><input id="rd" type="date" value="${today()}"></div><textarea id="rw" placeholder="Work done / site update"></textarea>
+  <div class="mu" style="margin:8px 0 4px">Stock: items taken from / returned to the store for this site</div><div id="items">${itemRow()}</div><button class="t" onclick="$('items').insertAdjacentHTML('beforeend',itemRow())">+ add item</button><br><button class="p" onclick="addReport()" style="margin-top:8px">Save report</button></div>`+
+  ([...D.reports.filter(r=>r.siteId===sid)].sort((a,b)=>b.ts-a.ts).map(r=>`<div class="card"><div class="it" style="border:none;padding:0"><span><b>${r.date}</b> · <span class="mu">${E(r.by)}</span></span>${mgr()?`<button class="t d" onclick="del('reports','${r.id}')">✕</button>`:''}</div><div>${E(r.work)}</div>${(r.items||[]).length?`<div class="wrap"><table><tr><th>Item</th><th>Taken</th><th>Returned</th></tr>${r.items.map(i=>`<tr><td>${E(i.name)}</td><td>${i.taken}</td><td>${i.returned}</td></tr>`).join('')}</table></div>`:''}</div>`).join('')||'<p class="mu">No reports yet.</p>');
+ }
+ if(tab==='problems'){
+  return h+`<div class="card"><b>Report a problem</b><textarea id="pt" placeholder="Describe the problem" style="margin-top:8px"></textarea><div class="row" style="margin-top:8px"><select id="ps"><option>Low</option><option selected>Medium</option><option>High</option></select><button onclick="$('cam').click()">📷 Take photo</button><button onclick="$('gal').click()">🖼 Attach image</button></div>
+  <input id="cam" type="file" accept="image/*" capture="environment" hidden onchange="pick(event)"><input id="gal" type="file" accept="image/*" multiple hidden onchange="pick(event)"><div class="ph" id="prev">${prevH()}</div><button class="p" onclick="addProb()" style="margin-top:8px">Save problem</button></div>`+probList(D.problems.filter(p=>p.siteId===sid));
+ }
+ return h+`<div class="card"><div id="msgs"></div><div class="row" style="margin:8px 0 0"><input id="ct" placeholder="Write a message…" style="flex:4" onkeydown="if(event.key==='Enter')send()"><button class="p" onclick="send()">Send</button></div></div>`;
+}
+const itemRow=()=>`<div class="row ir"><input class="in" list="dl" placeholder="Item"><input class="tk" type="number" min="0" step="any" placeholder="Taken"><input class="rt" type="number" min="0" step="any" placeholder="Returned"></div>`;
+function addReport(){const w=$('rw').value.trim(),items=[...document.querySelectorAll('.ir')].map(r=>({name:r.querySelector('.in').value.trim(),taken:+r.querySelector('.tk').value||0,returned:+r.querySelector('.rt').value||0})).filter(i=>i.name&&(i.taken||i.returned));
+ if(!w&&!items.length)return;put('reports',{siteId:sid,date:$('rd').value||today(),work:w,items,by:ME.name,ts:Date.now()});$('rw').value='';$('items').innerHTML=itemRow()}
+function delSite(id){if(!confirm('Delete this site together with ALL its reports, problems, photos, visits and chat?'))return;del('sites',id);go('sites')}
+function toBlob(f){return new Promise(r=>{const i=new Image();i.onload=()=>{const k=Math.min(1,1280/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);c.toBlob(r,'image/jpeg',.75)};i.src=URL.createObjectURL(f)})}
+async function pick(e){for(const f of e.target.files){if(P.length>=3){alert('Max 3 photos per problem');break}
+ try{const b=await toBlob(f),r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'image/jpeg'},body:b,credentials:'same-origin'}),j=await r.json();if(!r.ok)throw new Error(j.error);P.push(j.id)}catch(x){alert('Upload failed: '+x.message)}}
+ e.target.value='';$('prev').innerHTML=prevH()}
+const prevH=()=>P.map((s,i)=>`<img src="/uploads/${s}" onclick="P.splice(${i},1);$('prev').innerHTML=prevH()" title="Tap to remove">`).join('');
+function addProb(){const t=$('pt').value.trim();if(!t&&!P.length)return;put('problems',{siteId:sid,text:t,sev:$('ps').value,status:'open',photos:P,date:today(),by:ME.name,ts:Date.now()});P=[];$('pt').value='';$('prev').innerHTML=''}
+function probList(l){return [...l].sort((a,b)=>(a.status==='open'?0:1)-(b.status==='open'?0:1)||b.ts-a.ts).map(p=>`<div class="card"><div class="it" style="border:none;padding:0"><span>${view==='problems'?`<b class="click" onclick="go('site','${p.siteId}')">${E(sn(p.siteId))}</b> · `:''}<span class="mu">${p.date} · ${E(p.by)}</span> <span class="badge ${p.sev}">${p.sev}</span> <span class="badge ${p.status}">${p.status}</span></span><span><button class="t" onclick="upd('problems','${p.id}',{status:'${p.status==='open'?'solved':'open'}'})">${p.status==='open'?'Mark solved':'Reopen'}</button>${mgr()?`<button class="t d" onclick="del('problems','${p.id}')">✕</button>`:''}</span></div><div>${E(p.text)}</div><div class="ph">${(p.photos||[]).map((s,i)=>`<img src="/uploads/${s}" onclick="zoom('${p.id}',${i})">`).join('')}</div></div>`).join('')||'<p class="mu">No problems recorded.</p>'}
+function zoom(id,i){$('lbi').src='/uploads/'+D.problems.find(p=>p.id===id).photos[i];$('lb').style.display='flex'}
+function msgs(){const b=$('msgs');if(!b)return;const near=b.scrollHeight-b.scrollTop-b.clientHeight<80;
+ b.innerHTML=D.chat.filter(m=>m.siteId===sid).sort((a,c)=>a.ts-c.ts).map(m=>`<div class="m ${m.by===ME.id?'me':''}"><small>${E(m.name)} · ${E(m.role)} · ${new Date(m.ts).toLocaleString([],{dateStyle:'short',timeStyle:'short'})}</small>${E(m.text)}</div>`).join('')||'<span class="mu">No messages yet. Start the discussion.</span>';
+ if(near||!b.dataset.s){b.scrollTop=b.scrollHeight;b.dataset.s=1}}
+function send(){const t=$('ct').value.trim();if(!t)return;put('chat',{siteId:sid,text:t,by:ME.id,name:ME.name,role:ME.role,ts:Date.now()});$('ct').value=''}
+function vVisits(){
+ const t=today(),l=[...D.visits].sort(byDate);
+ return `<h3>Visits</h3>${sch()?`<div class="card"><b>Plan a visit — pick a date for each site</b>${D.sites.map(s=>`<div class="it" style="flex-wrap:wrap;align-items:center"><b style="flex:2;min-width:140px">${E(s.name)}</b><input type="date" id="vd${s.id}" value="${t}"><input type="time" id="vt${s.id}"><input id="vn${s.id}" placeholder="Purpose"><button class="p" onclick="addVisit('${s.id}')">Set visit</button></div>`).join('')||'<p class="mu">Add sites first.</p>'}</div>`:''}
+ <div class="card"><b>Schedule</b>${l.map(v=>`<div class="it"><span class="click" onclick="go('site','${v.siteId}')"><b>${E(sn(v.siteId))}</b> <span class="mu">${E(v.note||'')}</span><br><span class="mu">${v.date} ${E(v.time||'')} ${v.date===t&&!v.done?'· TODAY':v.date<t&&!v.done?'· OVERDUE':''}</span></span><span><span class="badge ${v.done?'done':'wip'}">${v.done?'done':'planned'}</span><button class="t" onclick="upd('visits','${v.id}',{done:${!v.done}})">${v.done?'Undo':'Done'}</button>${sch()?`<button class="t d" onclick="del('visits','${v.id}')">✕</button>`:''}</span></div>`).join('')||'<p class="mu">No visits scheduled.</p>'}</div>`;
+}
+function addVisit(id){const d=$('vd'+id).value;if(!d)return;put('visits',{siteId:id,date:d,time:$('vt'+id).value,note:$('vn'+id).value,done:false,by:ME.name,ts:Date.now()});$('vn'+id).value=''}
+function vProb(){return `<h3>All problems</h3>`+probList(D.problems)}
+function vStock(){
+ const g={};D.reports.forEach(r=>(r.items||[]).forEach(i=>{const a=g[r.siteId]=g[r.siteId]||{},k=i.name.toLowerCase();(a[k]=a[k]||{n:i.name,t:0,r:0});a[k].t+=i.taken;a[k].r+=i.returned}));
+ const ids=Object.keys(g);
+ return `<h3>Stock — taken &amp; returned per site</h3><p class="mu">Filled automatically from site reports.</p>`+(ids.map(id=>`<div class="card"><b class="click" onclick="go('site','${id}')">${E(sn(id))}</b><div class="wrap"><table><tr><th>Item</th><th>Taken</th><th>Returned</th><th>On site</th></tr>${Object.values(g[id]).map(x=>`<tr><td>${E(x.n)}</td><td>${x.t}</td><td>${x.r}</td><td><b>${x.t-x.r}</b></td></tr>`).join('')}</table></div></div>`).join('')||'<p class="mu">No stock movements yet. Add items when creating a site report.</p>');
+}
+function vUsers(){
+ return `<h3>Users</h3><div class="card"><b>Create account</b><div class="row" style="margin-top:8px"><input id="uu" placeholder="Username (a-z, 0-9)" autocapitalize="none"><input id="un" placeholder="Full name"><select id="ur">${ROLES.map(r=>`<option ${r==='Technician'?'selected':''}>${r}</option>`).join('')}</select><input id="up" type="text" placeholder="Password (min 6)"></div><button class="p" onclick="addUser()">Create</button></div>
+ <div class="card">${D.users.map(u=>`<div class="it" style="flex-wrap:wrap;align-items:center"><span><b>${E(u.name)}</b> <span class="mu">@${E(u.id)}</span></span><span><select onchange="upd('users','${u.id}',{role:this.value})">${ROLES.map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select><button class="t" onclick="resetPw('${u.id}')">Reset password</button>${u.id!==ME.id?`<button class="t d" onclick="if(confirm('Delete account?'))del('users','${u.id}')">✕</button>`:''}</span></div>`).join('')}</div>`;
+}
+async function addUser(){const u=$('uu').value.trim().toLowerCase(),n=$('un').value.trim(),p=$('up').value;
+ if(!/^[a-z0-9._-]{3,}$/.test(u)||!n||p.length<6)return alert('Username 3+ chars (a-z, 0-9), full name, password 6+ chars');
+ await W(api('POST','/api/users',{username:u,name:n,role:$('ur').value,password:p}).then(()=>refresh()));['uu','un','up'].forEach(i=>{if($(i))$(i).value=''})}
+async function resetPw(u){const p=prompt('New password (min 6 characters) for '+u);if(!p||p.length<6)return;await W(api('PATCH','/api/users/'+u,{password:p}).then(()=>alert('Password changed')))}
+async function myPw(){const o=prompt('Current password');if(!o)return;const n=prompt('New password (min 6 characters)');if(!n||n.length<6)return;try{await api('POST','/api/password',{old:o,new:n});ME.must=false;alert('Password changed');render()}catch(e){alert(e.message)}}
+(async()=>{try{ME=await api('GET','/api/me');await start()}catch(e){ME=null;render()}})();
+</script></body></html>
